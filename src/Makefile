@@ -36,4 +36,4 @@ m_particle_par.o:	m_particle_core.o
 m_gas.o:		m_units_constants.o
 m_lookup_table.o:	m_find_index.o
 m_cross_sec.o: m_gas.o
-m_pc_all.o: m_cross_sec.o m_gas.o m_particle_core.o m_random.o
+m_pc_all.o: m_cross_sec.o m_gas.o m_particle_core.o m_random.o m_units_constants.o
