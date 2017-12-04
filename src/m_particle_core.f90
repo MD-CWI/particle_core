@@ -430,14 +430,16 @@ contains
 
   !> Perform an elastic collision for particle 'll'
   subroutine elastic_collision(part_in, part_out, n_part_out, coll, rng)
+    use m_units_constants
     type(PC_part_t), intent(in)        :: part_in
     type(PC_part_t), intent(inout)     :: part_out(:)
     integer, intent(out)               :: n_part_out
     type(CS_coll_t), intent(in)        :: coll
     type(RNG_t), intent(inout) :: rng
-
+    real(dp)                       :: phi, theta, chi, psi, vel
     real(dp)                           :: bg_vel(3), com_vel(3)
-
+    select case(coll%scat_flag)
+      case(0)
     ! TODO: implement random bg velocity
     bg_vel      = 0.0_dp
     n_part_out  = 1
@@ -450,6 +452,25 @@ contains
     part_out(1)%v = part_out(1)%v - com_vel
     call scatter_isotropic(part_out(1), norm2(part_out(1)%v), rng)
     part_out(1)%v = part_out(1)%v + com_vel
+      case(1)
+        psi = 2*UC_pi*rng%unif_01()
+        theta = acos(part_in%v(3)/norm2(part_in%v))
+        if(part_in%v(1) >= 0.0) then
+               if(part_in%v(2) >= 0.0) then
+                        phi = atan(part_in%v(2)/part_in%v(1))
+                else
+                        phi = UC_pi + atan(part_in%v(2)/part_in%v(1))
+               end if
+        else
+                if(part_in%v(2) == 0.0) then
+                        phi = 0.0d0
+                else
+                        phi = UC_pi/2.0d0
+                end if
+        end if
+        chi = scatangle(part_out(1),coll)
+        vel = norm2(part_out(1)%v)
+        call scatter_anisotropic(part_out(1),theta,phi,chi,psi,vel)
   end subroutine elastic_collision
 
   !> Perform an excitation-collision for particle 'll'
@@ -460,7 +481,7 @@ contains
     integer, intent(out)               :: n_part_out
     type(CS_coll_t), intent(in)        :: coll
     type(RNG_t), intent(inout) :: rng
-
+    real(dp)                       :: phi, theta, chi, psi
     real(dp)             :: energy, old_en, new_vel
 
     old_en  = PC_v_to_en(part_in%v, coll%part_mass)
@@ -469,7 +490,27 @@ contains
 
     n_part_out  = 1
     part_out(1) = part_in
+    select case(coll%scat_flag)
+       case(0)
     call scatter_isotropic(part_out(1), new_vel, rng)
+       case(1)
+        psi = 2*UC_pi*rng%unif_01()
+        theta = acos(part_in%v(3)/norm2(part_in%v))
+        if(part_in%v(1) >= 0.0) then
+                if(part_in%v(2) >= 0.0) then
+                        phi = atan(part_in%v(2)/part_in%v(1))
+                else
+                        phi = UC_pi + atan(part_in%v(2)/part_in%v(1))
+                end if
+        else
+                if(part_in%v(2) == 0.0) then
+                        phi = 0.0d0
+                else
+                        phi = UC_pi/2.0d0
+                end if
+        end if
+        chi = scatangle(part_out(1),coll)
+        call scatter_anisotropic(part_out(1),theta,phi,chi,psi,new_vel)
   end subroutine excite_collision
 
   !> Perform an ionizing collision for particle 'll'
@@ -528,6 +569,60 @@ contains
     part%v(3)   = 1 - 2 * sum_sq
     part%v      = part%v * vel_norm ! Normalization
   end subroutine scatter_isotropic
+
+   subroutine scatter_anisotropic(part_in,theta,phi,chi,psi,vel)
+      use m_units_constants
+      type(PC_part_t), intent(inout)        :: part_in
+      real(dp), intent(IN) :: theta,phi,chi,psi,vel
+
+      real(dp)             :: costheta,cosphi,sintheta,sinphi,coschi, &
+                                     cospsi,sinchi,sinpsi
+
+      costheta = cos(theta)
+      cosphi = cos(phi)
+      sintheta = sin(theta)
+      sinphi = sin(phi)
+    
+     !  find the sines and cosines of chi and psi.
+      coschi = cos(chi)
+      cospsi = cos(psi)
+      sinchi = sin(chi)
+      sinpsi = sin(psi)
+      
+      part_in%v(1) = vel * ( sintheta*cosphi*coschi + &
+                          sinchi*(costheta*cosphi*cospsi-sinphi*sinpsi) )
+      part_in%v(2) = vel * ( sintheta*sinphi*coschi + &
+                          sinchi*(costheta*sinphi*cospsi+cosphi*sinpsi) )
+      part_in%v(3) = vel * ( costheta*coschi - sintheta*sinchi*cospsi )
+      
+   end subroutine scatter_anisotropic
+
+  real(dp) function scatangle(part_in,coll) 
+    use m_units_constants
+    type(PC_part_t), intent(in)        :: part_in
+    type(CS_coll_t), intent(in)        :: coll
+      type(RNG_t) :: rng
+      real(dp) :: sqr_en,kr,en_ev, emp
+      kr= rng%unif_01()
+ 
+
+            en_ev = PC_v_to_en(part_in%v, coll%part_mass)/UC_elec_volt
+            sqr_en=sqrt(en_ev)
+            if (coll%gas_ID) =='N2') then
+               emp=(0.065d0*en_ev+0.26d0*sqr_en)/(1.0d0+0.05d0*en_ev+0.2d0*sqr_en)- &
+                   12d0*sqr_en/(1.0d0+40d0*sqr_en)
+               scatangle=acos(1.0d0-1.0d0*kr*(1.0d0-emp)/(1.0d0+emp*(1.0d0-2.0d0*kr)) )
+            else if (coll%gas_ID=='O2') then
+               scatangle=acos((2.0d0+en_ev-2.0d0*(1.0d0+en_ev)**kr)/en_ev)
+            else if (coll%gas_ID=='Ar') then
+               scatangle=acos((2.0d0+en_ev-2.0d0*(1.0d0+en_ev)**kr)/en_ev)
+            else
+               emp  = 4.0d0*en_ev/(1.0d0+4.0d0*en_ev)
+               scatangle=acos(1.0d0-2.0d0*kr*(1.0d0-emp)/(1.0d0+emp*(1.0d0-2.0d0*kr)) )
+            end if
+       
+
+  end function scatangle
 
   !> Advance the particle position and velocity over time dt
   subroutine advance_particle(part, dt)
