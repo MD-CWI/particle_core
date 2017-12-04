@@ -52,7 +52,7 @@ module m_cross_sec
        CS_num_types = 4
   integer, parameter :: max_num_cols_per_gas = 50
   integer, parameter :: max_num_rows = 400
-  
+  integer, parameter :: ISO_flag = 0, ANI_flag = 1
   ! Public variables
   public :: CS_t
   public :: CS_coll_t
@@ -182,11 +182,11 @@ contains
 
        select case(col_type)
        case (CS_elastic_t)
-          cs_buf(cIx)%coll%scat_flag = 1 ! Flag for scattering model for each collision
+          cs_buf(cIx)%coll%scat_flag = ANI_flag ! Flag for scattering model for each collision
        case (CS_excite_t)
-          cs_buf(cIx)%coll%scat_flag = 1 ! Flag for scattering model for each collision
+          cs_buf(cIx)%coll%scat_flag = ANI_flag ! Flag for scattering model for each collision
        case (CS_excite_t)
-          cs_buf(cIx)%coll%scat_flag = 1 ! Flag for scattering model for each collision
+          cs_buf(cIx)%coll%scat_flag = ANI_flag ! Flag for scattering model for each collision
        end select
 
 
