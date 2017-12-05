@@ -105,7 +105,7 @@ write(file_unit,*) cross_secs(cIx)%description
 write(file_unit,*) "energy in eV // cross section in m2"
 write(file_unit,*) '--------------------------------------------------'
 do j=1,cross_secs(cIx)%n_rows
-write(file_unit,*) cross_secs(cIx)%en_cs(1,j) , cross_secs(cIx)%en_cs(2,j)
+write(file_unit,"(ES10.4, 6X, ES10.4)") cross_secs(cIx)%en_cs(1,j) , cross_secs(cIx)%en_cs(2,j)
 end do
 write(file_unit,*) '--------------------------------------------------'
 
