@@ -471,6 +471,7 @@ contains
         chi = scatangle(part_out(1),coll)
         vel = norm2(part_out(1)%v)
         call scatter_anisotropic(part_out(1),theta,phi,chi,psi,vel)
+     end select
   end subroutine elastic_collision
 
   !> Perform an excitation-collision for particle 'll'
@@ -511,6 +512,7 @@ contains
         end if
         chi = scatangle(part_out(1),coll)
         call scatter_anisotropic(part_out(1),theta,phi,chi,psi,new_vel)
+     end select
   end subroutine excite_collision
 
   !> Perform an ionizing collision for particle 'll'
@@ -521,19 +523,49 @@ contains
     integer, intent(out)               :: n_part_out
     type(CS_coll_t), intent(in)        :: coll
     type(RNG_t), intent(inout) :: rng
-
+    real(dp)                       :: phi, theta, chi_p, chi_s, psi, energy_s, energy_p, vel_s, vel_p
     real(dp)                       :: energy, old_en, velocity
+    real(dp),parameter                       :: Opal = 13.0 ! Opal's constant for secondary energy 
 
     old_en      = PC_v_to_en(part_in%v, coll%part_mass)
     energy      = max(0.0_dp, old_en - coll%en_loss)
-    velocity    = PC_en_to_vel(0.5_dp * energy, coll%part_mass)
-
     n_part_out  = 2
     part_out(1) = part_in
     part_out(2) = part_in
+    
+    select case(coll%scat_flag)
+      case(0)
+    velocity    = PC_en_to_vel(0.5_dp * energy, coll%part_mass)
     call scatter_isotropic(part_out(1), velocity, rng)
     call scatter_isotropic(part_out(2), velocity, rng)
-       
+      case(1)
+        psi = 2*UC_pi*rng%unif_01()
+        theta = acos(part_in%v(3)/norm2(part_in%v))
+        if(part_in%v(1) >= 0.0) then
+              if(part_in%v(2) >= 0.0) then
+                        phi = atan(part_in%v(2)/part_in%v(1))
+              else
+                        phi = UC_pi + atan(part_in%v(2)/part_in%v(1))
+              end if
+        else
+              if(part_in%v(2) == 0.0) then
+                        phi = 0.0d0
+              else
+                        phi = UC_pi/2.0d0
+              end if
+        end if 
+
+        energy = energy/UC_elec_volt
+        energy_s = Opal*tan(rng%unif_01()*atan(energy/(2*Opal)))
+        energy_p = energy - energy_s
+        chi_s = acos(sqrt(energy_s/energy))
+        chi_p = acos(sqrt(energy_p/energy))
+        vel_s = PC_en_to_vel(energy_s*UC_elec_volt, coll%part_mass)
+        vel_p = PC_en_to_vel(energy_p*UC_elec_volt, coll%part_mass)
+
+        call scatter_anisotropic(part_out(2),theta,phi,chi_s,UC_pi+psi,vel_s)
+        call scatter_anisotropic(part_out(1),theta,phi,chi_p,psi,vel_p)
+     end select     
   end subroutine ionization_collision
 
   !> Perform attachment of electron 'll'
