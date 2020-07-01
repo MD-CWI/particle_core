@@ -623,6 +623,9 @@ contains
 
     associate(part => self%particles(ix))
       do
+         ! If the particles are treated as a tracer, advance without collision
+         if (associated(self%particle_mover, PC_tracer_advance_midpoint)) exit
+
          ! Get the next collision time
          coll_time = sample_coll_time(rng%unif_01(), self%inv_max_rate)
 
