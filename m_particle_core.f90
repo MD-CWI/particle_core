@@ -484,13 +484,17 @@ contains
     real(dp), intent(in)             :: dt
     integer                          :: n
     type(PC_buf_t)                   :: buffer
+    real(dp)                         :: coll_ledger_incr(self%n_colls)
 
     self%particles(1:self%n_part)%t_left = dt
     n = 1
+    coll_ledger_incr = 0
 
     do while (n <= self%n_part)
-       call self%move_and_collide(n, self%rng, buffer)
+       call self%move_and_collide(n, self%rng, buffer, coll_ledger_incr)
        call handle_buffer(self, buffer, 0)
+       self%coll_ledger = self%coll_ledger + coll_ledger_incr
+       coll_ledger_incr = 0
        n = n + 1
     end do
   end subroutine advance_step
@@ -577,6 +581,7 @@ contains
     type(prng_t), intent(inout)      :: prng
     type(PC_buf_t)                   :: buffer
     integer                          :: n, tid, n_lo, n_hi
+    real(dp)                         :: coll_ledger_incr(self%n_colls)
 
     self%particles(1:self%n_part)%t_left = dt
 
@@ -588,13 +593,16 @@ contains
     do
        n_hi = self%n_part
        !$omp barrier
-       !$omp do
+       !$omp do reduction(+:coll_ledger_incr)
        do n = n_lo, n_hi
-          call self%move_and_collide(n, prng%rngs(tid), buffer)
+          call self%move_and_collide(n, prng%rngs(tid), buffer, coll_ledger_incr)
           ! Make sure buffers are not getting too full
           call handle_buffer(self, buffer, PC_advance_buf_size/2)
        end do
        !$omp end do
+
+       ! Add the new collisions to the collision_ledger
+       self%coll_ledger = self%coll_ledger + coll_ledger_incr
 
        ! Ensure buffers are empty at the end of the loop
        call handle_buffer(self, buffer, 0)
@@ -614,7 +622,7 @@ contains
   end subroutine advance_openmp_step
 
   !> Advance particles and collide them with neutrals.
-  subroutine move_and_collide(self, ix, rng, buffer)
+  subroutine move_and_collide(self, ix, rng, buffer, coll_ledger_incr)
     use m_cross_sec
     class(PC_t), intent(inout)    :: self
     integer, intent(in)           :: ix !< Index of particle
@@ -624,6 +632,8 @@ contains
     integer            :: i, cIx, cType, n_coll_out
     real(dp)           :: coll_time, new_vel
     type(PC_part_t)    :: coll_out(PC_coll_max_part_out)
+
+    real(dp), intent(inout)           :: coll_ledger_incr(:)
 
     associate(part => self%particles(ix))
       do
@@ -652,10 +662,9 @@ contains
               new_vel, rng%unif_01())
 
          if (cIx > 0) then
+
            ! Add reaction to the ledger
-           !$omp critical
-           self%coll_ledger(cIx) = self%coll_ledger(cIx) + part%w
-           !$omp end critical
+           coll_ledger_incr(cIx) = coll_ledger_incr(cIx) + part%w
 
             ! Perform the corresponding collision
             cType    = self%colls(cIx)%type
