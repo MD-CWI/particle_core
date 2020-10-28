@@ -36,7 +36,7 @@ module m_particle_core
   integer, parameter :: PC_coll_max_part_out = 2
 
   !> Buffer size for advancing particle in parallel (not important for users)
-  integer, parameter :: PC_advance_buf_size = 1000
+  integer, parameter, public :: PC_advance_buf_size = 1000
 
   !> Initial size of an event list (will be automatically increased when required)
   integer, parameter :: PC_event_list_init_size = 10*1000
@@ -282,6 +282,9 @@ module m_particle_core
   public :: PC_boris_advance
   public :: PC_tracer_advance_midpoint
   public :: PC_after_dummy
+
+  public :: init_buffer
+  public :: handle_buffer
 
 contains
 
