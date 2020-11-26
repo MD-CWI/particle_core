@@ -37,6 +37,9 @@ module m_particle_core
 
   !> Buffer size for advancing particle in parallel (not important for users)
   integer, parameter, public :: PC_advance_buf_size = 1000
+  
+  !> Buffer size for advancing particle in parallel (not important for users)
+  integer, parameter, public :: PC_advance_buf_surf_size = 1000
 
   !> Initial size of an event list (will be automatically increased when required)
   integer, parameter :: PC_event_list_init_size = 10*1000
@@ -59,9 +62,9 @@ module m_particle_core
 
   !> An event (particle collision)
   type, public :: PC_event_t
-     type(PC_part_t) :: part  !< Particle that had collision
-     integer         :: cix   !< Collision index
-     integer         :: ctype !< Collision type
+     type(PC_part_t)         :: part     !< Particle that had collision
+     integer                 :: cix       !< Collision index
+     integer                 :: ctype     !< Collision type
   end type PC_event_t
 
   !> Particle buffer for parallel simulations
@@ -79,6 +82,26 @@ module m_particle_core
      !> Buffer for events
      type(PC_event_t) :: event(PC_advance_buf_size)
   end type PC_buf_t
+
+  !> An event (particle collision)
+  type, public :: PC_buf_surf_event_t
+     !> Index for charge type
+     integer          :: i_surf = 0
+     !> Contains ix_surf, ix_cell
+     real(dp)         :: ix_surf = 0.0_dp
+     real(dp)         :: ix_cell(2) = 0.0_dp
+     !> Surface charge amount
+     real(dp)         :: charge = 0.0_dp
+  end type PC_buf_surf_event_t
+  
+  !> Surface charge buffer for parallel simulations
+  type, public        :: PC_buf_surf_t
+     !> Index for events
+     integer          :: i_event = 0
+     !> Buffer for events
+     type(PC_buf_surf_event_t)  :: bur_surf_event(PC_advance_buf_surf_size)
+
+  end type PC_buf_surf_t
 
   !> Type for directly specifying collision rates
   type, public :: rate_func_t
@@ -284,6 +307,7 @@ module m_particle_core
   public :: PC_after_dummy
 
   public :: init_buffer
+  public :: init_buffer_surf
   public :: handle_buffer
 
 contains
@@ -508,6 +532,11 @@ contains
     buffer%i_rm    = 0
     buffer%i_event = 0
   end subroutine init_buffer
+  
+  subroutine init_buffer_surf(buffer_surf)
+    type(PC_buf_surf_t), intent(inout) :: buffer_surf
+    buffer_surf%i_event = 0
+  end subroutine init_buffer_surf
 
   !> If the buffers for a thread are getting too full, empty them
   subroutine handle_buffer(self, buffer, max_size)
@@ -592,6 +621,8 @@ contains
     call init_buffer(buffer)    ! Make sure private copies are initialized
     tid     = omp_get_thread_num() + 1
     n_lo    = 1
+
+    coll_ledger_incr = 0.0_dp
 
     do
        n_hi = self%n_part
