@@ -768,6 +768,67 @@ contains
     get_max_coll_rate = self%max_rate
   end function get_max_coll_rate
 
+  !> Perform an elastic collision with a gas molecule that moves due to gas temperature
+  subroutine elastic_collision_gasT(part_in, part_out, n_part_out, coll, rng)
+   use m_gas
+   use m_units_constants
+   type(PC_part_t), intent(in)    :: part_in
+   type(PC_part_t), intent(inout) :: part_out(:)
+   integer, intent(out)           :: n_part_out
+   type(CS_coll_t), intent(in)    :: coll
+   type(RNG_t), intent(inout)     :: rng
+   real(dp)                       :: bg_vel(3), com_vel(3), rel_vel(3), rel_vel_size
+   real(dp)                       :: normal_rands(2)
+   real(dp)                       :: a, mass_target
+   real(dp)                       :: theta, phi
+   real(dp)                       :: chi, eta
+
+   n_part_out  = 1
+   part_out(1) = part_in
+
+   mass_target = coll%part_mass / coll%rel_mass
+   a = sqrt(UC_boltzmann_const * GAS_temperature / mass_target)
+
+   ! The velocity of the molecule should follow a Maxwell-Boltzmann distribution
+   ! Each velocity component should therefore be sampled from a normal distribution
+   ! with mean 0 and variance 1.
+   ! See: https://scicomp.stackexchange.com/questions/19969/how-do-i-generate-maxwell-boltzmann-variates-using-a-uniform-distribution-random
+   ! and https://stackoverflow.com/questions/47251332/random-numbers-with-maxwell-distribution-in-c
+   normal_rands = rng%two_normals()
+   bg_vel(1) = a * normal_rands(1)
+   bg_vel(2) = a * normal_rands(2)
+   normal_rands = rng%two_normals()
+   bg_vel(3) = a * normal_rands(1)
+
+   ! Compute center of mass velocity
+   com_vel = (coll%rel_mass * part_out(1)%v + bg_vel) / (1 + coll%rel_mass)
+
+   rel_vel = part_out(1)%v - bg_vel
+   ! Size of relative velocity stays equal before and after elastic collision
+   rel_vel_size = norm2(rel_vel)
+   ! Angles of the relative velocity vector
+   theta = acos(rel_vel(3) / sqrt(rel_vel_size))
+   phi = atan2(rel_vel(2), rel_vel(1))
+
+   ! Angles of the relative velocity in the COM frame assuming isotropic scattering
+   ! See: http://dx.doi.org/10.1103/PhysRevE.49.3264
+   chi = acos(1 - 2 * rng%unif_01())
+   eta = 2 * UC_pi * rng%unif_01()
+
+   ! Relative velocity vector after collision in the Lab frame
+   rel_vel(1) = rel_vel_size * (-sin(chi) * sin(eta) * sin(phi) &
+                                + sin(chi) * cos(eta) * cos(theta) * cos(phi) &
+                                + cos(chi) * sin(theta) * cos(phi))
+   rel_vel(2) = rel_vel_size * (sin(chi) * sin(eta) * cos(phi) &
+                                + sin(chi) * cos(eta) * cos(theta) * sin(phi) &
+                                + cos(chi) * sin(theta) * sin(phi))
+   rel_vel(3) = rel_vel_size * (-sin(chi) * cos(eta) * sin(theta) &
+                                + cos(chi) * cos(theta))
+
+   part_out(1)%v = (mass_target / (coll%part_mass + mass_target)) * rel_vel + com_vel
+
+ end subroutine elastic_collision_gasT
+
   !> Perform an elastic collision for particle 'll'
   subroutine elastic_collision(part_in, part_out, n_part_out, coll, rng)
     type(PC_part_t), intent(in)    :: part_in
