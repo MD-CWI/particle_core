@@ -52,6 +52,9 @@ module m_cross_sec
   integer, parameter, public :: CS_effective_t = 5
   integer, parameter, public :: CS_num_types = 5
 
+  ! Index indiciting a collision with neutral molecule CH4
+  integer, parameter, public :: CS_is_CH4 = 1
+
   !> Maximum number of cross sections per gas
   integer, parameter :: max_processes_per_gas = 200
 
@@ -216,6 +219,7 @@ contains
 
        cs_buf(cIx)%coll%type = col_type
        cs_buf(cIx)%coll%part_mass = UC_elec_mass
+       if (gas_name == "CH4") cs_buf(cIx)%coll%gas_index = CS_is_CH4
 
        select case(col_type)
        case (CS_elastic_t, CS_effective_t)
