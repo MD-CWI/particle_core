@@ -55,6 +55,7 @@ module m_particle_core
      real(dp) :: a(3)   = 0 !< Acceleration
      real(dp) :: w      = 0 !< Weight
      real(dp) :: t_left = 0 !< Propagation time left
+     real(dp) :: en_loss  = 0 !< Energy loss since previous time step
   end type PC_part_t
 
   !> An event (particle collision)
@@ -858,6 +859,7 @@ contains
     real(dp), intent(in)           :: gas_vel(3)
     type(RNG_t), intent(inout)     :: rng
     real(dp)                       :: com_vel(3)
+    real(dp)                       :: en_diff
 
     n_part_out  = 1
     part_out(1) = part_in
@@ -869,6 +871,10 @@ contains
     part_out(1)%v = part_out(1)%v - com_vel
     call scatter_isotropic(part_out(1), norm2(part_out(1)%v), rng)
     part_out(1)%v = part_out(1)%v + com_vel
+
+    ! Calculate energy dissipation
+    en_diff = PC_v_to_en(part_in%v, coll%part_mass) - PC_v_to_en(part_out(1)%v, coll%part_mass)
+    part_out%en_loss = part_out%en_loss + abs(en_diff)
   end subroutine elastic_collision
 
   !> Perform an excitation-collision for particle 'll'
@@ -888,6 +894,7 @@ contains
     type(RNG_t), intent(inout)     :: rng
     real(dp)                       :: reduced_mass, old_en, energy, new_vel
     real(dp)                       :: com_vel(3), new_rel_vel, mass_frac
+    real(dp)                       :: en_diff
 
     if (molecular_mass > 0.0) then
        ! The formulas below are implemented as in M. Yousfi et al. 1994:
@@ -914,6 +921,10 @@ contains
        part_out(1) = part_in
        call scatter_isotropic(part_out(1), new_vel, rng)
     end if
+
+    ! Calculate energy dissipation
+    en_diff = PC_v_to_en(part_in%v, coll%part_mass) - PC_v_to_en(part_out(1)%v, coll%part_mass)
+    part_out%en_loss = part_out%en_loss + abs(en_diff)
   end subroutine excite_collision
 
   !> Perform an ionizing collision for particle 'll'
@@ -934,6 +945,10 @@ contains
     part_out(2) = part_in
     call scatter_isotropic(part_out(1), velocity, rng)
     call scatter_isotropic(part_out(2), velocity, rng)
+
+    ! Calculate energy dissipation
+    part_out(1)%en_loss = part_out(1)%en_loss + abs(old_en - energy)
+    part_out(2)%en_loss = 0.0_dp ! Ensure that en_loss from previous collisions is not copied
   end subroutine ionization_collision
 
   subroutine scatter_isotropic(part, vel_norm, rng)
