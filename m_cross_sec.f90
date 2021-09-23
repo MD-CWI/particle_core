@@ -527,7 +527,9 @@ contains
 
     write(my_unit, '(A)') "This document stores that the total (=space and time &
       &integrated) number of collisions that have occurred. The output is given  &
-      &per collision index (cIx, c.f. *_cs_summary.txt.). The plotting-script &
+      &per collision index (cIx, c.f. *_cs_summary.txt.). Note that the first entry &
+      &of each row corresponds to cIx=0 (the null collisions) and its data is &
+      &not incorporated in the header. The plotting-script &
       &associated with this data can be found in: &
       &<path-to-afivo-pic>/tools/plot_ledger.py"
     write(my_unit, '(A)') " "
