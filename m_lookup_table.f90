@@ -111,8 +111,9 @@ contains
     end do
   end function find_index_linear
 
-  !> Binary search of sorted list for the smallest ix such that list(ix) >= val.
-  !> On failure, returns size(list)+1
+  !> Binary search of sorted list for the smallest ix such that list(ix) >=
+  !> val. On failure, returns size(list)+1. The list should have a size of at
+  !> least one.
   pure function find_index_bsearch(list, val) result(ix)
     real(dp), intent(in) :: list(:) !< Sorted list
     real(dp), intent(in) :: val     !< Value to search for
