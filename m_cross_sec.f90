@@ -77,12 +77,6 @@ module m_cross_sec
   public :: CS_create_ledger
   public :: CS_write_ledger
 
-  ! Types of behaviours for dealing with data outside of the input data range
-  integer, parameter, public :: CS_extrapolate_error = 0
-  integer, parameter, public :: CS_extrapolate_constant = 1
-  integer, parameter, public :: CS_extrapolate_zero = 2
-  integer, parameter, public :: CS_extrapolate_linear = 3
-
   ! Types of behaviours for dealing with EFFECTIVE cross sections
   integer, parameter, public :: CS_effective_error = 0
   integer, parameter, public :: CS_effective_auto = 1
@@ -108,10 +102,10 @@ contains
     type(CS_t), intent(inout), allocatable :: cross_secs(:)
     !> How to handle data below the first data point, if the first cross section
     !> is non-zero (default: error)
-    integer, intent(in), optional          :: opt_out_of_bounds_lower
+    character(len=*), intent(in), optional :: opt_out_of_bounds_lower
     !> How to handle data after the last data point, if the last cross section
     !> is non-zero (default: error)
-    integer, intent(in), optional          :: opt_out_of_bounds_upper
+    character(len=*), intent(in), optional :: opt_out_of_bounds_upper
     !> How to convert EFFECTIVE cross sections (default: do not)
     integer, intent(in), optional          :: handle_effective
 
@@ -125,20 +119,20 @@ contains
     real(dp)                :: cs(2, max_num_rows+1)
     real(dp)                :: x_scaling, y_scaling, tmp_value
     real(dp)                :: two_reals(2), temp
-    integer                 :: out_of_bounds_lower, out_of_bounds_upper
+    character(len=20)       :: out_of_bounds_lower, out_of_bounds_upper
     integer                 :: ahandle_effective
 
     ! Default behaviour for when the input data does not go up to the upper
     ! bound energy (req_energy)
     if (.not. present(opt_out_of_bounds_upper)) then
-       out_of_bounds_upper = CS_extrapolate_error
+       out_of_bounds_upper = "error"
     else
        out_of_bounds_upper = opt_out_of_bounds_upper
     end if
 
     ! Default behavior for data at lower energies than the input data
     if (.not. present(opt_out_of_bounds_lower)) then
-       out_of_bounds_lower = CS_extrapolate_constant
+       out_of_bounds_lower = "constant"
     else
        out_of_bounds_lower = opt_out_of_bounds_lower
     end if
@@ -317,22 +311,25 @@ contains
        ! for all higher energies. Cross sections will be taken as constant for
        ! energies above the ones found inside the tables.
        if (cs(1, n_rows) < req_energy .and. cs(2, n_rows) > 0.0D0) then
+          write(error_unit, *) "Warning: extrapolation required at line", nL, &
+               " of ", trim(filename)
+
           select case (out_of_bounds_upper)
-          case (CS_extrapolate_error)
+          case ("error")
              write(error_unit, *) "Cross section data at line ", &
                   nL, " does not go up to high enough x-values (energy)."
              write(error_unit, *) "Required: ", req_energy, "found: ", cs(1, n_rows)
              error stop
-          case (CS_extrapolate_zero)
+          case ("zero")
              ! Add an extra line to the end of the input data with a cross
              ! section of 0 and an energy slightly higher than the last value
              n_rows = n_rows + 1
              cs(1, n_rows) = cs(1, n_rows - 1) * (1 + epsilon(1.0_dp))
              cs(2, n_rows) = 0
-          case (CS_extrapolate_constant)
+          case ("constant")
              continue
              ! Do nothing
-          case (CS_extrapolate_linear)
+          case ("linear")
              ! Linearly extrapolate from the last value in the table to
              ! req_energy. If this cross section value becomes negative we set
              ! it to 0 and warn the user
@@ -350,11 +347,33 @@ contains
                      " eV resulted in a negative cross section. ", &
                      "Setting this cross section to 0."
              end if
+          case ("log")
+             ! Extrapolate using the slope of log(cross_section) from the
+             ! last two data points. Requires the last two cross sections
+             ! to be positive.
+             if (cs(2, n_rows) <= 0.0_dp .or. cs(2, n_rows - 1) <= 0.0_dp) then
+                write(error_unit, *) "CS_read_file error: logarithmic ", &
+                     "extrapolation requires the last two cross sections ", &
+                     "to be positive. Found: ", cs(2, n_rows-1), cs(2, n_rows)
+                error stop
+             end if
+
+             ! Compute slope in log-space: d(log(cs))/d(energy)
+             temp = (log(cs(2, n_rows)) - log(cs(2, n_rows - 1))) / &
+                  (cs(1, n_rows) - cs(1, n_rows - 1))
+
+             n_rows = n_rows + 1
+             cs(1, n_rows) = req_energy
+             cs(2, n_rows) = cs(2, n_rows - 1) * &
+                  exp(temp * (req_energy - cs(1, n_rows - 1)))
+
+             ! Safety check: if the extrapolated value is extremely small,
+             ! clamp to zero
+             if (cs(2, n_rows) < tiny(1.0_dp)) then
+                cs(2, n_rows) = 0.0_dp
+             end if
           case default
-             write(error_unit, *) "Method with enum ", out_of_bounds_upper, &
-                  " for handling input data which does not go to high enough "&
-                  "x-values (energy) was not implemented."
-             error stop
+             error stop "Invalid value for opt_out_of_bounds_upper"
           end select
        end if
 
@@ -363,10 +382,15 @@ contains
        ! energies below the ones found inside the tables.
        if (cs(2, 1) > 0.0D0 .and. cs(1, 1) > 0.0D0) then
           select case (out_of_bounds_lower)
-          case (CS_extrapolate_constant)
+          case ("error")
+             write(error_unit, *) "Cross section data at line ", &
+                  nL, " does not go up to low enough x-values (energy)."
+             write(error_unit, *) "Non-zero value at: ", cs(1, 1), " eV"
+             error stop
+          case ("constant")
              continue
              ! Do nothing
-          case (CS_extrapolate_zero)
+          case ("zero")
              ! Add an extra line at the beginning of the input data with a cross
             ! section of 0 and an energy slightly lower than the first value
             n_rows = n_rows + 1
@@ -384,7 +408,7 @@ contains
                end if
             end if
           case default
-             error stop "Invalid value for opt_out_of_bounds_upper"
+             error stop "Invalid value for opt_out_of_bounds_lower"
           end select
        end if
 
